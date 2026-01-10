@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 /* ===================== TYPES ===================== */
 
@@ -59,19 +59,15 @@ function normSpace(s: string): string {
     .replace(/\s+/g, " ");
 }
 
-/**
- * ✅ IMPORTANT (DEMANDÉ) :
- * Recherche UNIQUEMENT sur les lettres du TITRE (title_raw)
- * => pas variant, pas category, pas shop_id, pas unit, etc.
- */
-function titleForSearch(l: Listing): string {
-  return normSpace(`${l.title_raw || ""}`);
+// ✅ IMPORTANT : maintenant, la recherche ne doit regarder QUE le titre (et éventuellement variant)
+function textForSearch(l: Listing): string {
+  return normSpace(`${l.title_raw || ""} ${l.variant || ""}`);
 }
 
-function matchesKeywordTitleOnly(l: Listing, q: string): boolean {
+function matchesKeyword(l: Listing, q: string): boolean {
   const k = normSpace(q);
   if (!k) return true;
-  return titleForSearch(l).includes(k);
+  return textForSearch(l).includes(k);
 }
 
 /* ===================== SHOP NAME (via URL domain) ===================== */
@@ -185,8 +181,6 @@ export default function HomePage() {
     justifyContent: "center",
     gap: 10,
     flexWrap: "wrap",
-    position: "relative", // ✅ pour ancrer les dropdowns
-    zIndex: 50, // ✅ crée un contexte au-dessus
   };
 
   const inputStyle: React.CSSProperties = {
@@ -211,7 +205,8 @@ export default function HomePage() {
     padding: "0 14px",
     fontSize: 13,
     cursor: "pointer",
-    transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease",
+    transition:
+      "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease",
   };
 
   const select: React.CSSProperties = {
@@ -268,8 +263,6 @@ export default function HomePage() {
   const resultsWrap: React.CSSProperties = {
     ...glassBar,
     padding: 18,
-    position: "relative",
-    zIndex: 1, // ✅ en dessous des dropdowns
   };
 
   const resultsHeader: React.CSSProperties = {
@@ -408,78 +401,6 @@ export default function HomePage() {
     el.style.borderColor = "rgba(255,255,255,0.10)";
   };
 
-  // ---------- ✅ Dropdown styles ----------
-  const dropdownBtn: React.CSSProperties = {
-    ...btn,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    whiteSpace: "nowrap",
-  };
-
-  const dropdownPanel: React.CSSProperties = {
-    position: "absolute",
-    top: 52,
-    minWidth: 260,
-    maxWidth: 360,
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(10, 14, 22, 0.96)",
-    backdropFilter: "blur(10px)",
-    boxShadow: "0 22px 70px rgba(0,0,0,0.55)",
-    padding: 12,
-    zIndex: 9999, // ✅ AU PREMIER PLAN
-  };
-
-  const dropdownTitle: React.CSSProperties = {
-    fontWeight: 900,
-    fontSize: 13,
-    marginBottom: 10,
-    opacity: 0.95,
-  };
-
-  const checksWrap: React.CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    maxHeight: 320,
-    overflow: "auto",
-    paddingRight: 4,
-  };
-
-  const checkRow: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.35)",
-    borderRadius: 12,
-    padding: "8px 10px",
-    cursor: "pointer",
-    userSelect: "none",
-  };
-
-  const checkboxStyle: React.CSSProperties = {
-    width: 16,
-    height: 16,
-    accentColor: "#7aa2ff",
-  };
-
-  const dropdownActions: React.CSSProperties = {
-    display: "flex",
-    gap: 10,
-    marginTop: 12,
-    justifyContent: "flex-end",
-  };
-
-  const tinyBtn: React.CSSProperties = {
-    ...btn,
-    height: 34,
-    borderRadius: 10,
-    padding: "0 12px",
-    fontSize: 12,
-  };
-
   // ---------- State (recherche + data) ----------
   const [q, setQ] = React.useState("");
   const [submittedQ, setSubmittedQ] = React.useState("");
@@ -493,74 +414,6 @@ export default function HomePage() {
 
   const [allListings, setAllListings] = React.useState<Listing[]>([]);
   const [results, setResults] = React.useState<Listing[]>([]);
-  const [lastFetched, setLastFetched] = React.useState<Listing[]>([]);
-
-  // ---------- ✅ Filtres state ----------
-  const SHOP_DOMAIN_LIST = React.useMemo(() => Object.keys(SHOP_LABEL_BY_DOMAIN), []);
-
-  const [shopFilter, setShopFilter] = React.useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
-    for (const d of Object.keys(SHOP_LABEL_BY_DOMAIN)) init[d] = false;
-    return init;
-  });
-
-  const [typeFilter, setTypeFilter] = React.useState<{ zoa: boolean; acro: boolean; torch: boolean }>(() => ({
-    zoa: false,
-    acro: false,
-    torch: false,
-  }));
-
-  const [openTypeDropdown, setOpenTypeDropdown] = React.useState(false);
-  const [openShopDropdown, setOpenShopDropdown] = React.useState(false);
-
-  function anyShopChecked(): boolean {
-    return Object.values(shopFilter).some(Boolean);
-  }
-
-  function anyTypeChecked(): boolean {
-    return typeFilter.zoa || typeFilter.acro || typeFilter.torch;
-  }
-
-  function listingMatchesShop(l: Listing): boolean {
-    if (!anyShopChecked()) return true;
-    const d = domainFromUrl(l.url);
-    if (!d) return false;
-    return shopFilter[d] === true;
-  }
-
-  function listingMatchesType(l: Listing): boolean {
-    if (!anyTypeChecked()) return true;
-
-    const title = normSpace(l.title_raw || "");
-
-    const zoaOK = title.includes("zoa");
-    const acroOK = title.includes("acro");
-
-    const torchKeywords = [
-      "torch",
-      "rapunzel",
-      "holy grail",
-      "indo",
-      "gold",
-      "austie",
-      "dragon soul",
-      "tips",
-      "joker",
-      "banana",
-    ].map((x) => normSpace(x));
-
-    const torchOK = torchKeywords.some((k) => title.includes(k));
-
-    const okZ = typeFilter.zoa ? zoaOK : false;
-    const okA = typeFilter.acro ? acroOK : false;
-    const okT = typeFilter.torch ? torchOK : false;
-
-    return okZ || okA || okT;
-  }
-
-  function filterWithShopAndType(list: Listing[]): Listing[] {
-    return list.filter((l) => listingMatchesShop(l)).filter((l) => listingMatchesType(l));
-  }
 
   // ---------- Load Supabase listings (une fois) ----------
   React.useEffect(() => {
@@ -574,7 +427,7 @@ export default function HomePage() {
         .from("listings")
         .select(SELECT_FIELDS)
         .order("created_at", { ascending: false })
-        .limit(6000); // ✅ on monte pour éviter d’en perdre
+        .limit(4000);
 
       if (cancelled) return;
 
@@ -651,15 +504,12 @@ export default function HomePage() {
     return copy;
   }
 
-  // ✅ AJOUT: échappe % et _ pour ilike
+  // ✅ AJOUT: échappe % et _ pour éviter des surprises avec ilike
   function escapeIlike(s: string) {
     return s.replace(/[%_]/g, (m) => `\\${m}`);
   }
 
-  /**
-   * ✅ Recherche SUPABASE UNIQUEMENT sur title_raw (lettres tapées)
-   * puis application filtres shop/type + tri
-   */
+  // ✅ MODIF: la recherche se fait dans Supabase (title_raw uniquement) => plus de “rapunzel manquant”
   async function runSearch(nextQ?: string) {
     const query = (nextQ ?? q).trim();
     setSubmittedQ(query);
@@ -678,12 +528,14 @@ export default function HomePage() {
     try {
       const pat = `%${escapeIlike(query)}%`;
 
+      // ✅ Recherche simple : juste le TITRE (et variant si tu veux garder “— variant”)
+      // Si tu veux STRICTEMENT titre seulement: enlève le .or(...) et garde juste .ilike("title_raw", pat)
       const { data, error } = await supabase
         .from("listings")
         .select(SELECT_FIELDS)
-        .ilike("title_raw", pat) // ✅ TITRE SEULEMENT
+        .or(`title_raw.ilike.${pat},variant.ilike.${pat}`)
         .order("created_at", { ascending: false })
-        .limit(6000);
+        .limit(3000);
 
       if (error) {
         setErr(`Erreur Supabase: ${error.message}`);
@@ -694,22 +546,13 @@ export default function HomePage() {
 
       const rows = ((data as Listing[]) ?? []).filter(Boolean);
 
-      // ✅ Double sécurité: filtre côté client (titre seulement)
-      const titleFiltered = rows.filter((l) => matchesKeywordTitleOnly(l, query));
-
-      // ✅ Filtres shop/type
-      const fullyFiltered = filterWithShopAndType(titleFiltered);
-
-      setLastFetched(titleFiltered); // base pour recalcul si filtres changent
-      setResults(sortListings(fullyFiltered));
+      // ✅ Double sécurité: filtre côté client aussi (titre/variant seulement)
+      const filtered = rows.filter((l) => matchesKeyword(l, query));
+      setResults(sortListings(filtered));
       setLoading(false);
     } catch (e: any) {
-      // fallback sur cache local si jamais
-      const fallback = allListings.filter((l) => matchesKeywordTitleOnly(l, query));
-      const fullyFiltered = filterWithShopAndType(fallback);
-      setLastFetched(fallback);
-      setResults(sortListings(fullyFiltered));
-      setErr(`Erreur recherche (fallback utilisé): ${e?.message || "Unknown error"}`);
+      setErr(`Erreur recherche: ${e?.message || "Unknown error"}`);
+      setResults([]);
       setLoading(false);
     }
   }
@@ -719,7 +562,6 @@ export default function HomePage() {
     setSubmittedQ("");
     setShowResults(false);
     setResults([]);
-    setLastFetched([]);
     setErr(null);
   }
 
@@ -740,45 +582,6 @@ export default function HomePage() {
     setResults((prev) => sortListings(prev));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortMode]);
-
-  // ✅ Si filtres changent et on a une recherche active => recalcul sans refaire Supabase
-  React.useEffect(() => {
-    if (!showResults) return;
-    if (!submittedQ.trim()) return;
-
-    const base = lastFetched.length ? lastFetched : allListings.filter((l) => matchesKeywordTitleOnly(l, submittedQ));
-    const fullyFiltered = filterWithShopAndType(base);
-    setResults(sortListings(fullyFiltered));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shopFilter, typeFilter]);
-
-  // ✅ Click outside to close dropdowns
-  React.useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      const t = e.target as HTMLElement | null;
-      if (!t) return;
-
-      const insideDropdown = t.closest("[data-dd='1']");
-      if (!insideDropdown) {
-        setOpenShopDropdown(false);
-        setOpenTypeDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
-  function resetShopFilter() {
-    setShopFilter((prev) => {
-      const next: Record<string, boolean> = {};
-      for (const k of Object.keys(prev)) next[k] = false;
-      return next;
-    });
-  }
-
-  function resetTypeFilter() {
-    setTypeFilter({ zoa: false, acro: false, torch: false });
-  }
 
   // ---------- Page ----------
   return (
@@ -808,9 +611,9 @@ export default function HomePage() {
 
       {/* Recherche mot-clé */}
       <div style={container}>
-        <div style={sectionTitle}>Recherche par lettres du titre (ex: t, tor, rapunzel...)</div>
+        <div style={sectionTitle}>Recherche par lettres du nom (ex: t, tor, rapunzel, hammer...)</div>
 
-        <div style={searchBarWrap} data-dd="1">
+        <div style={searchBarWrap}>
           <input
             style={inputStyle}
             value={q}
@@ -823,29 +626,6 @@ export default function HomePage() {
             Rechercher
           </button>
 
-          {/* ✅ Boutons dropdown comme ton image */}
-          <button
-            style={dropdownBtn}
-            onClick={() => {
-              setOpenTypeDropdown((v) => !v);
-              setOpenShopDropdown(false);
-            }}
-            type="button"
-          >
-            Filtrer par coraux
-          </button>
-
-          <button
-            style={dropdownBtn}
-            onClick={() => {
-              setOpenShopDropdown((v) => !v);
-              setOpenTypeDropdown(false);
-            }}
-            type="button"
-          >
-            Filtrer par magasin
-          </button>
-
           <button style={btn} onClick={clearSearch}>
             Effacer
           </button>
@@ -856,137 +636,6 @@ export default function HomePage() {
             <option value="sale_first">Soldes d’abord</option>
             <option value="new_first">Nouveautés</option>
           </select>
-
-          {/* ✅ Dropdown CORAUX (z-index MAX) */}
-          {openTypeDropdown ? (
-            <div
-              style={{
-                ...dropdownPanel,
-                left: 0,
-              }}
-              data-dd="1"
-            >
-              <div style={dropdownTitle}>Types de coraux</div>
-
-              <div style={checksWrap}>
-                <label style={checkRow}>
-                  <input
-                    type="checkbox"
-                    style={checkboxStyle}
-                    checked={typeFilter.acro}
-                    onChange={() => setTypeFilter((p) => ({ ...p, acro: !p.acro }))}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 900 }}>Acropora</div>
-                    <div style={{ fontSize: 12, opacity: 0.85 }}>Titre contient “acro”</div>
-                  </div>
-                </label>
-
-                <label style={checkRow}>
-                  <input
-                    type="checkbox"
-                    style={checkboxStyle}
-                    checked={typeFilter.zoa}
-                    onChange={() => setTypeFilter((p) => ({ ...p, zoa: !p.zoa }))}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 900 }}>Zoa</div>
-                    <div style={{ fontSize: 12, opacity: 0.85 }}>Titre contient “zoa”</div>
-                  </div>
-                </label>
-
-                <label style={checkRow}>
-                  <input
-                    type="checkbox"
-                    style={checkboxStyle}
-                    checked={typeFilter.torch}
-                    onChange={() => setTypeFilter((p) => ({ ...p, torch: !p.torch }))}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 900 }}>Torch</div>
-                    <div style={{ fontSize: 12, opacity: 0.85 }}>
-                      torch / rapunzel / holy grail / indo / gold / austie / dragon soul / tips / joker / banana
-                    </div>
-                  </div>
-                </label>
-              </div>
-
-              <div style={dropdownActions}>
-                <button
-                  style={tinyBtn}
-                  onClick={() => {
-                    resetTypeFilter();
-                  }}
-                  type="button"
-                >
-                  Reset
-                </button>
-                <button
-                  style={tinyBtn}
-                  onClick={() => setOpenTypeDropdown(false)}
-                  type="button"
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* ✅ Dropdown MAGASIN (z-index MAX) */}
-          {openShopDropdown ? (
-            <div
-              style={{
-                ...dropdownPanel,
-                left: 170, // position sympa à côté
-              }}
-              data-dd="1"
-            >
-              <div style={dropdownTitle}>Magasins</div>
-
-              <div style={checksWrap}>
-                {SHOP_DOMAIN_LIST.map((domain) => {
-                  const label = SHOP_LABEL_BY_DOMAIN[domain] || domain;
-                  const checked = shopFilter[domain] === true;
-
-                  return (
-                    <label key={domain} style={checkRow} title={domain}>
-                      <input
-                        type="checkbox"
-                        style={checkboxStyle}
-                        checked={checked}
-                        onChange={() =>
-                          setShopFilter((prev) => ({
-                            ...prev,
-                            [domain]: !prev[domain],
-                          }))
-                        }
-                      />
-                      <div style={{ fontWeight: 900 }}>{label}</div>
-                    </label>
-                  );
-                })}
-              </div>
-
-              <div style={dropdownActions}>
-                <button
-                  style={tinyBtn}
-                  onClick={() => {
-                    resetShopFilter();
-                  }}
-                  type="button"
-                >
-                  Reset
-                </button>
-                <button
-                  style={tinyBtn}
-                  onClick={() => setOpenShopDropdown(false)}
-                  type="button"
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
 
@@ -1029,7 +678,11 @@ export default function HomePage() {
                   const availability = l.status === "sold_out" ? "SOLD OUT" : "DISPONIBLE";
 
                   const cardNode = (
-                    <div style={resultCardWrap} onMouseEnter={onHoverResultCard} onMouseLeave={onLeaveResultCard}>
+                    <div
+                      style={resultCardWrap}
+                      onMouseEnter={onHoverResultCard}
+                      onMouseLeave={onLeaveResultCard}
+                    >
                       {onSale && pct != null ? <div style={badgePct}>-{pct}%</div> : null}
 
                       <div style={resultTitle}>{l.title_raw || "Sans titre"}</div>
