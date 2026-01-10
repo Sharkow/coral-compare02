@@ -542,7 +542,8 @@ function absolutizeImg(urlRaw: string, u: string | null | undefined): string | n
 function parseHtmlProduct(urlRaw: string, html: string, shop_id: string, category: string): Listing {
   const $ = cheerio.load(html);
 
-  const $product = $("div.product").first().length ? $("div.product").first() : $.root();
+  const $product = $("div.product").first().length ? $("div.product").first() : $("body");
+
 
   const title =
     norm($product.find("h1.product_title").text()) ||
