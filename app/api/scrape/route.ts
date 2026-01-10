@@ -1,4 +1,4 @@
- import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import { createClient } from "@supabase/supabase-js";
 
@@ -409,6 +409,7 @@ function pickFromSrcset(srcset?: string | null) {
   if (!first) return null;
   return first.split(" ")[0]?.trim() || null;
 }
+
 type ShopifyHtmlFallback = {
   title: string;
   imageUrl: string | null;
@@ -420,12 +421,14 @@ type ShopifyHtmlFallback = {
 
 // Shopify fallback HTML robuste (évite prix "from" genre 36)
 function parseShopifyHtmlFallback(url: string, html: string): ShopifyHtmlFallback {
-
   const $ = cheerio.load(html);
 
   const title = norm($("h1").first().text()) || norm($("title").text()) || "Untitled";
 
-  const imageUrl = $('meta[property="og:image"]').attr("content") || $('meta[name="og:image"]').attr("content") || null;
+  const imageUrl =
+    $('meta[property="og:image"]').attr("content") ||
+    $('meta[name="og:image"]').attr("content") ||
+    null;
 
   // 1) ShopifyAnalytics.meta.product (variants/prix)
   try {
@@ -514,9 +517,18 @@ function parseShopifyHtmlFallback(url: string, html: string): ShopifyHtmlFallbac
   const price = safePrice(pMeta ?? ldPrice ?? pText ?? null);
 
   const lower = html.toLowerCase();
-  const status: "available" | "sold_out" = lower.includes("sold out") ? "sold_out" : "available";
 
-  return { title, imageUrl, price_cad: price, sale_price_cad: null as number | null, status, variantTitle: null as string | null };
+  // ✅ IMPORTANT: on force le type pour éviter "string not assignable"
+  const status: ShopifyHtmlFallback["status"] = lower.includes("sold out") ? "sold_out" : "available";
+
+  return {
+    title,
+    imageUrl,
+    price_cad: price,
+    sale_price_cad: null,
+    status,
+    variantTitle: null,
+  };
 }
 
 /* ================= ✅ AJOUT: FIX ABC IMAGES (SANS CASSER LES AUTRES) ================= */
@@ -551,8 +563,9 @@ function absolutizeImg(urlRaw: string, u: string | null | undefined): string | n
 function parseHtmlProduct(urlRaw: string, html: string, shop_id: string, category: string): Listing {
   const $ = cheerio.load(html);
 
-  const $product = $("div.product").first().length ? $("div.product").first() : $("body");
-
+  // ✅ IMPORTANT: éviter $.root() (Cheerio<Document>) => on reste sur Element
+  const $p = $("div.product").first();
+  const $product = $p.length ? $p : $("body");
 
   const title =
     norm($product.find("h1.product_title").text()) ||
