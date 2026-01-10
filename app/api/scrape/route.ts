@@ -409,9 +409,18 @@ function pickFromSrcset(srcset?: string | null) {
   if (!first) return null;
   return first.split(" ")[0]?.trim() || null;
 }
+type ShopifyHtmlFallback = {
+  title: string;
+  imageUrl: string | null;
+  price_cad: number | null;
+  sale_price_cad: number | null;
+  status: "available" | "sold_out";
+  variantTitle: string | null;
+};
 
 // Shopify fallback HTML robuste (évite prix "from" genre 36)
-function parseShopifyHtmlFallback(url: string, html: string) {
+function parseShopifyHtmlFallback(url: string, html: string): ShopifyHtmlFallback {
+
   const $ = cheerio.load(html);
 
   const title = norm($("h1").first().text()) || norm($("title").text()) || "Untitled";
