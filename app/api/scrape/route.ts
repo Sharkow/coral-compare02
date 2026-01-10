@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
@@ -11,15 +12,18 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SCRAPE_SECRET = process.env.SCRAPE_SECRET || "";
 
+// ✅ FIX TS (Vercel): on fixe un type stable pour Supabase
+type SB = SupabaseClient<any>;
+
 // ✅ crée le client SEULEMENT quand on en a besoin
-function getSupabase() {
+function getSupabase(): SB {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("Missing SUPABASE env vars");
   }
 
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
-  });
+  }) as any;
 }
 
 /* ================= TYPES ================= */
@@ -355,7 +359,7 @@ function buildSingleShopifyListingFromProductsJson(
   });
 }
 
-async function scrapeReefSolutionCatalog(supabase: ReturnType<typeof createClient>, src: SourceRow) {
+async function scrapeReefSolutionCatalog(supabase: SB, src: SourceRow) {
   const origin = new URL(src.url).origin;
 
   const products = await fetchShopifyCatalogProducts(origin);
@@ -389,7 +393,7 @@ async function isShopifyOrigin(origin: string): Promise<boolean> {
   }
 }
 
-async function scrapeShopifyCatalogGeneric(supabase: ReturnType<typeof createClient>, src: SourceRow) {
+async function scrapeShopifyCatalogGeneric(supabase: SB, src: SourceRow) {
   const origin = new URL(src.url).origin;
 
   const products = await fetchShopifyCatalogProducts(origin);
@@ -716,8 +720,8 @@ async function extractLinksWithPagination(startUrl: string, maxPages = 80) {
 
 /* ================= UPSERT ================= */
 
-// ✅ FIX TYPESCRIPT "never" (Vercel build) : cast le client en any (pas le Listing)
-async function upsertIfValid(supabase: ReturnType<typeof createClient>, l: Listing | null) {
+// ✅ FIX TYPESCRIPT "never" (Vercel build) : on utilise SB (SupabaseClient<any>)
+async function upsertIfValid(supabase: SB, l: Listing | null) {
   if (!l) return false;
 
   // ✅ évite le crash "invalid input syntax for type uuid: \"\""
@@ -730,7 +734,7 @@ async function upsertIfValid(supabase: ReturnType<typeof createClient>, l: Listi
   return true;
 }
 
-async function scrapeSource(supabase: ReturnType<typeof createClient>, src: SourceRow) {
+async function scrapeSource(supabase: SB, src: SourceRow) {
   // ✅ IMPORTANT: un shop qui 429 ne doit PLUS faire planter tout le run
   try {
     // ✅ skip si shop_id vide (sinon uuid error)
