@@ -355,7 +355,7 @@ function buildSingleShopifyListingFromProductsJson(
   });
 }
 
-async function scrapeReefSolutionCatalog(src: SourceRow) {
+async function scrapeReefSolutionCatalog(supabase: ReturnType<typeof createClient>, src: SourceRow) {
   const origin = new URL(src.url).origin;
 
   const products = await fetchShopifyCatalogProducts(origin);
@@ -366,7 +366,7 @@ async function scrapeReefSolutionCatalog(src: SourceRow) {
     if (!productLooksTorch(p)) continue;
 
     const l = buildSingleShopifyListingFromProductsJson(origin, p, src.shop_id, src.category);
-    if (await upsertIfValid(l)) found++;
+    if (await upsertIfValid(supabase, l)) found++;
 
     // mini pause entre produits (évite rafales)
     await sleep(60 + jitterMs(80));
@@ -389,7 +389,7 @@ async function isShopifyOrigin(origin: string): Promise<boolean> {
   }
 }
 
-async function scrapeShopifyCatalogGeneric(src: SourceRow) {
+async function scrapeShopifyCatalogGeneric(supabase: ReturnType<typeof createClient>, src: SourceRow) {
   const origin = new URL(src.url).origin;
 
   const products = await fetchShopifyCatalogProducts(origin);
@@ -398,7 +398,7 @@ async function scrapeShopifyCatalogGeneric(src: SourceRow) {
 
   for (const p of products) {
     const l = buildSingleShopifyListingFromProductsJson(origin, p, src.shop_id, src.category);
-    if (await upsertIfValid(l)) found++;
+    if (await upsertIfValid(supabase, l)) found++;
     await sleep(50 + jitterMs(120));
   }
 
@@ -738,36 +738,13 @@ async function scrapeSource(supabase: ReturnType<typeof createClient>, src: Sour
 
     // ✅ ReefSolution uniquement: scrape le catalogue complet Shopify
     if (isReefSolutionSource(src)) {
-      const origin = new URL(src.url).origin;
-      const products = await fetchShopifyCatalogProducts(origin);
-
-      let found = 0;
-
-      for (const p of products) {
-        if (!productLooksTorch(p)) continue;
-
-        const l = buildSingleShopifyListingFromProductsJson(origin, p, src.shop_id, src.category);
-        if (await upsertIfValid(supabase, l)) found++;
-        await sleep(60 + jitterMs(80));
-      }
-
-      return { source: `${origin} (catalog)`, found };
+      return await scrapeReefSolutionCatalog(supabase, src);
     }
 
     // ✅ AJOUT: Shopify catalog générique (CandyCorals, etc.) = coverage max
     const origin = new URL(src.url).origin;
     if (await isShopifyOrigin(origin)) {
-      const products = await fetchShopifyCatalogProducts(origin);
-
-      let found = 0;
-
-      for (const p of products) {
-        const l = buildSingleShopifyListingFromProductsJson(origin, p, src.shop_id, src.category);
-        if (await upsertIfValid(supabase, l)) found++;
-        await sleep(50 + jitterMs(120));
-      }
-
-      return { source: `${origin} (shopify catalog)`, found };
+      return await scrapeShopifyCatalogGeneric(supabase, src);
     }
 
     // ✅ MODIF MINIMALE: au lieu d’une seule page, on collecte via pagination (Woo)
