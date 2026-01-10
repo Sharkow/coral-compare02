@@ -2,15 +2,11 @@
   "crons": [
     {
       "path": "/api/scrape?secret=Agnes04122017!!",
-      "schedule": "0 10 * * *"
+      "schedule": "0 11 * * *"
     },
     {
       "path": "/api/scrape?secret=Agnes04122017!!",
-      "schedule": "0 18 * * *"
-    },
-    {
-      "path": "/api/scrape?secret=Agnes04122017!!",
-      "schedule": "30 0 * * *"
+      "schedule": "0 19 * * *"
     }
   ]
 }
