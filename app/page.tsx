@@ -225,42 +225,6 @@ export default function HomePage() {
     cursor: "pointer",
   };
 
-  const categoriesWrap: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 46,
-    flexWrap: "wrap",
-    paddingTop: 6,
-    paddingBottom: 28,
-  };
-
-  const circleLink: React.CSSProperties = {
-    width: 150,
-    height: 150,
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.40)",
-    backdropFilter: "blur(6px)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    textDecoration: "none",
-    color: "#f5f5f7",
-    boxShadow: "0 18px 40px rgba(0,0,0,0.30)",
-    transition: "transform 180ms ease, box-shadow 180ms ease",
-  };
-
-  const circleLabel: React.CSSProperties = {
-    fontWeight: 900,
-    letterSpacing: 0.6,
-    fontSize: 14,
-    opacity: 0.95,
-    marginTop: -6,
-  };
-
   const logoSize = 120;
   const iconSize = 106;
 
@@ -921,11 +885,7 @@ export default function HomePage() {
                 >
                   Reset
                 </button>
-                <button
-                  style={tinyBtn}
-                  onClick={() => setOpenTypeDropdown(false)}
-                  type="button"
-                >
+                <button style={tinyBtn} onClick={() => setOpenTypeDropdown(false)} type="button">
                   OK
                 </button>
               </div>
@@ -977,11 +937,7 @@ export default function HomePage() {
                 >
                   Reset
                 </button>
-                <button
-                  style={tinyBtn}
-                  onClick={() => setOpenShopDropdown(false)}
-                  type="button"
-                >
+                <button style={tinyBtn} onClick={() => setOpenShopDropdown(false)} type="button">
                   OK
                 </button>
               </div>
@@ -990,7 +946,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Résultats OU Catégories */}
+      {/* Résultats */}
       {showResults ? (
         <div style={container}>
           <div style={resultsWrap}>
@@ -1089,28 +1045,7 @@ export default function HomePage() {
             )}
           </div>
         </div>
-      ) : (
-        <div style={container}>
-          <div style={sectionTitle}>Recherche par catégorie</div>
-
-          <div style={categoriesWrap}>
-            <Link href="/compare/acro" style={circleLink}>
-              <Image src="/icone/acro02.png" alt="Acropora" width={iconSize} height={iconSize} />
-              <div style={{ ...circleLabel, textTransform: "uppercase" }}>ACROPORA</div>
-            </Link>
-
-            <Link href="/compare/zoa" style={circleLink}>
-              <Image src="/icone/zoa02.png" alt="Zoa" width={iconSize} height={iconSize} />
-              <div style={{ ...circleLabel, textTransform: "uppercase" }}>ZOA</div>
-            </Link>
-
-            <Link href="/compare/torch" style={circleLink}>
-              <Image src="/icone/torch02.png" alt="Torch" width={iconSize} height={iconSize} />
-              <div style={circleLabel}>TORCH</div>
-            </Link>
-          </div>
-        </div>
-      )}
+      ) : null}
     </main>
   );
 }
