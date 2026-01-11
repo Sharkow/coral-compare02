@@ -451,13 +451,14 @@ export default function HomePage() {
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
-  const [sortMode, setSortMode] = React.useState<"price_asc" | "price_desc" | "sale_first" | "new_first">(
-    "price_asc"
-  );
+  const [sortMode, setSortMode] = React.useState<"price_asc" | "price_desc" | "sale_first" | "new_first">("price_asc");
 
   const [allListings, setAllListings] = React.useState<Listing[]>([]);
   const [results, setResults] = React.useState<Listing[]>([]);
   const [lastFetched, setLastFetched] = React.useState<Listing[]>([]);
+
+  // ✅ AJOUT UNIQUEMENT : Top 4 meilleures promos sur la page d'accueil
+  const [topPromos, setTopPromos] = React.useState<Listing[]>([]);
 
   // ---------- ✅ Filtres state ----------
   const SHOP_DOMAIN_LIST = React.useMemo(() => Object.keys(SHOP_LABEL_BY_DOMAIN), []);
@@ -562,6 +563,26 @@ export default function HomePage() {
   function isOnSale(l: Listing): boolean {
     return l.sale_price_cad != null && l.price_cad != null && l.sale_price_cad < l.price_cad;
   }
+
+  // ✅ AJOUT UNIQUEMENT : calcul des 4 meilleures promos à partir des données chargées
+  React.useEffect(() => {
+    const base = (allListings ?? []).filter(Boolean);
+
+    const promoPool = base
+      .filter((l) => isOnSale(l))
+      .filter((l) => l.status !== "sold_out");
+
+    promoPool.sort((a, b) => {
+      const da = discountPercent(a) ?? 0;
+      const db = discountPercent(b) ?? 0;
+      if (db !== da) return db - da;
+
+      // tie-break: prix effectif le + bas d'abord
+      return (displayPrice(a) ?? 999999) - (displayPrice(b) ?? 999999);
+    });
+
+    setTopPromos(promoPool.slice(0, 4));
+  }, [allListings]);
 
   function sortListings(items: Listing[]): Listing[] {
     const copy = [...items];
@@ -945,6 +966,87 @@ export default function HomePage() {
           ) : null}
         </div>
       </div>
+
+      {/* ✅ AJOUT UNIQUEMENT : Bloc "Meilleur promo actuelle" sur la page d'accueil (quand pas de recherche) */}
+      {!showResults ? (
+        <div style={container}>
+          <div style={sectionTitle}>Meilleur promo actuelle</div>
+
+          <div style={resultsWrap}>
+            {topPromos.length === 0 ? (
+              <div style={{ opacity: 0.85, fontSize: 13 }}>
+                Aucune promo trouvée pour le moment (il faut des items avec price_cad et sale_price_cad).
+              </div>
+            ) : (
+              <div style={grid}>
+                {topPromos.map((l) => {
+                  const onSale = isOnSale(l);
+                  const pct = discountPercent(l);
+                  const shopName = shopNameFromListing(l);
+                  const availability = l.status === "sold_out" ? "SOLD OUT" : "DISPONIBLE";
+
+                  const cardNode = (
+                    <div style={resultCardWrap} onMouseEnter={onHoverResultCard} onMouseLeave={onLeaveResultCard}>
+                      {onSale && pct != null ? <div style={badgePct}>-{pct}%</div> : null}
+
+                      <div style={resultTitle}>{l.title_raw || "Sans titre"}</div>
+
+                      <div style={imgArea}>
+                        {l.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={l.image_url}
+                            alt={l.title_raw}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <div style={{ opacity: 0.75, fontWeight: 800 }}>Pas d’image</div>
+                        )}
+                      </div>
+
+                      <div style={infoArea}>
+                        <div style={priceRow}>
+                          <div style={priceMain}>{formatCad(displayPrice(l))}</div>
+                          {onSale ? <div style={oldPrice}>{formatCad(l.price_cad)}</div> : null}
+                        </div>
+
+                        <div style={lineSmall}>
+                          <span style={{ opacity: 0.85 }}>Disponibilité</span>
+                          <span style={l.status === "sold_out" ? statusSold : statusOk}>{availability}</span>
+                        </div>
+
+                        <div style={lineSmall}>
+                          <span style={{ opacity: 0.85 }}>Format</span>
+                          <span style={{ fontWeight: 900 }}>{unitLabel(l)}</span>
+                        </div>
+
+                        <div style={lineSmall}>
+                          <span style={{ opacity: 0.85 }}>Magasin</span>
+                          <span style={{ fontWeight: 900, textAlign: "right" }}>{shopName}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+
+                  return l.url ? (
+                    <a
+                      key={l.id}
+                      href={l.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ textDecoration: "none" }}
+                    >
+                      {cardNode}
+                    </a>
+                  ) : (
+                    <div key={l.id}>{cardNode}</div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {/* Résultats */}
       {showResults ? (
