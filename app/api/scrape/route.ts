@@ -312,6 +312,10 @@ function buildSingleShopifyListingFromProductsJson(
   const variants: any[] = Array.isArray(p?.variants) ? p.variants : [];
   if (!variants.length) return null;
 
+  // ✅ FIX SOLD OUT (Invertsbay, GTAreef, etc.)
+  // On utilise "available" des variants si présent. Sinon on fallback en true.
+  const hasAvailField = variants.some((v) => typeof v?.available === "boolean");
+
   const scored = variants.map((v) => {
     const price = v?.price != null ? priceNum(String(v.price)) : null;
     const compare = v?.compare_at_price != null ? priceNum(String(v.compare_at_price)) : null;
@@ -321,16 +325,19 @@ function buildSingleShopifyListingFromProductsJson(
 
     const eff = effectivePrice(price_cad, sale_price_cad);
 
+    const vAvail = hasAvailField ? v?.available === true : true;
+
     return {
       v,
       price_cad: safePrice(price_cad),
       sale_price_cad: safePrice(sale_price_cad),
       eff: safePrice(eff),
-      available: true, // products.json => pas fiable sur availability, on garde available
+      available: vAvail,
     };
   });
 
-  const pool = scored.filter((x) => x.eff != null);
+  const availablePool = scored.filter((x) => x.available && x.eff != null);
+  const pool = availablePool.length ? availablePool : scored.filter((x) => x.eff != null);
   if (!pool.length) return null;
 
   pool.sort((a, b) => a.eff! - b.eff!);
@@ -341,7 +348,8 @@ function buildSingleShopifyListingFromProductsJson(
 
   const imageUrl = p?.image?.src || (Array.isArray(p?.images) ? p.images?.[0]?.src : null) || null;
 
-  const category = productLooksTorch(p) ? "torch" : fallbackCategory;
+  // ✅ IMPORTANT: on garde la catégorie source (fallbackCategory) pour "tout les coraux"
+  const category = fallbackCategory;
 
   return enforceTorch({
     shop_id,
@@ -351,7 +359,7 @@ function buildSingleShopifyListingFromProductsJson(
     image_url: imageUrl,
     price_cad: best.price_cad,
     sale_price_cad: best.sale_price_cad,
-    status: "available",
+    status: best.available ? "available" : "sold_out",
     variant: variantTitle,
     sale_mode: null,
     unit_type: null,
@@ -367,8 +375,7 @@ async function scrapeReefSolutionCatalog(supabase: SB, src: SourceRow) {
   let found = 0;
 
   for (const p of products) {
-    if (!productLooksTorch(p)) continue;
-
+    // ✅ FIX: ReefSolution => on ne filtre PLUS "torch only"
     const l = buildSingleShopifyListingFromProductsJson(origin, p, src.shop_id, src.category);
     if (await upsertIfValid(supabase, l)) found++;
 
@@ -672,16 +679,27 @@ function extractProductLinks(pageUrl: string, html: string) {
 }
 
 // ✅ AJOUT: pagination générique (Woo) pour pages category (ABC, etc.)
+// ✅ FIX ReefWonders: support ?product-page= (Woo shop pagination) + ?paged= + /page/n/
 function makePagedUrl(base: string, n: number) {
   const u = new URL(base);
-  u.searchParams.delete("paged");
 
-  const withQuery = new URL(u.toString());
-  withQuery.searchParams.set("paged", String(n));
+  // on garde base "propre"
+  u.searchParams.delete("paged");
+  u.searchParams.delete("product-page");
+
+  const withPagedQuery = new URL(u.toString());
+  withPagedQuery.searchParams.set("paged", String(n));
+
+  const withProductPageQuery = new URL(u.toString());
+  withProductPageQuery.searchParams.set("product-page", String(n));
 
   const withPath = normalizeUrl(`${u.origin}${u.pathname.replace(/\/+$/, "")}/page/${n}/`);
 
-  return { withQuery: withQuery.toString(), withPath };
+  return {
+    withPagedQuery: withPagedQuery.toString(),
+    withProductPageQuery: withProductPageQuery.toString(),
+    withPath,
+  };
 }
 
 async function extractLinksWithPagination(startUrl: string, maxPages = 80) {
@@ -691,18 +709,34 @@ async function extractLinksWithPagination(startUrl: string, maxPages = 80) {
   for (let p = 1; p <= maxPages; p++) {
     pages = p;
 
-    const { withQuery, withPath } = makePagedUrl(startUrl, p);
+    const { withPagedQuery, withProductPageQuery, withPath } = makePagedUrl(startUrl, p);
 
     let html = "";
+    let got = false;
+
+    // 1) ?product-page=
     try {
-      html = await fetchHtml(withQuery);
-    } catch {
+      html = await fetchHtml(withProductPageQuery);
+      got = true;
+    } catch {}
+
+    // 2) ?paged=
+    if (!got) {
+      try {
+        html = await fetchHtml(withPagedQuery);
+        got = true;
+      } catch {}
+    }
+
+    // 3) /page/n/
+    if (!got) {
       try {
         html = await fetchHtml(withPath);
-      } catch {
-        break;
-      }
+        got = true;
+      } catch {}
     }
+
+    if (!got) break;
 
     const links = extractProductLinks(startUrl, html);
     const before = all.size;
